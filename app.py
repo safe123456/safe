@@ -222,4 +222,4 @@ if prompt:
     response = chatbot_reply(prompt)
     st.session_state.messages.append({"role": "assistant", "content": response})
     st.chat_message("assistant").write(response)
-fonts.googleapis.com
+
