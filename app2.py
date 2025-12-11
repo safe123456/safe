@@ -1,5 +1,21 @@
 import streamlit as st
+from langchain_community.document_loaders import PyPDFDirectoryLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.embeddings import HuggingFaceBgeEmbeddings
+from langchain_community.vectorstores import Chroma
+from langchain_community.llms import HuggingFaceHub
+from langchain.chains import RetrievalQA
+from langchain.prompts import PromptTemplate
+import os
 
+# --------------------------------------------------------
+# CONFIGURATION DE LA PAGE
+# --------------------------------------------------------
+st.set_page_config(
+    page_title="Assistant Investissement",
+    page_icon="Briefcase",
+    layout="wide",
+)
 # --------------------------------------------------------
 # CONFIGURATION DE LA PAGE
 # --------------------------------------------------------
@@ -164,81 +180,60 @@ if st.session_state.profil:
         st.write(f"- Actions : *{capital * allocation['Actions'] / 100:.2f} €*")
         st.write(f"- Obligations : *{capital * allocation['Obligations'] / 100:.2f} €*")
         st.write(f"- Liquidités : *{capital * allocation['Liquidités'] / 100:.2f} €*")
-      # --------------------------------------------------------
-# 4 CHATBOT ULTRA-INTELLIGENT (il lit vraiment tes PDFs)
+     # --------------------------------------------------------
+# 4️⃣ CHATBOT MODERNE
 # --------------------------------------------------------
-st.subheader("Posez n’importe quelle question sur vos documents financiers")
+st.subheader("🤖 Chatbot intelligent")
 
-# On charge les PDFs et le cerveau IA une seule fois
-if "assistant" not in st.session_state:
-    with st.spinner("Je charge vos documents financiers... (30-60 secondes)"):
-        from langchain_community.document_loaders import PyPDFDirectoryLoader import PyPDFDirectoryLoader
-        from langchain.text_splitter import RecursiveCharacterTextSplitter
-        from langchain_community.embeddings import HuggingFaceBgeEmbeddings
-        from langchain_community.vectorstores import Chroma
-        from langchain_community.llms import HuggingFaceHub
-        from langchain.chains import RetrievalQA
-        from langchain.prompts import PromptTemplate
-
-        # Charge tous les PDFs du dossier "docs"
-        loader = PyPDFDirectoryLoader("docs")
-        documents = loader.load()
-
-        # Découpe en petits morceaux
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        texts = text_splitter.split_documents(documents)
-
-        # Crée la base de connaissances
-        embeddings = HuggingFaceBgeEmbeddings(model_name="BAAI/bge-small-en-v1.5")
-        db = Chroma.from_documents(texts, embeddings)
-
-        # Modèle IA gratuit (Mistral 7B)
-        llm = HuggingFaceHub(
-            repo_id="mistralai/Mistral-7B-Instruct-v0.3",
-            model_kwargs={"temperature": 0.3, "max_length": 1024}
-        )
-
-        # Prompt parfait pour la finance
-        template = """Tu es un conseiller en gestion de patrimoine expérimenté et très précis.
-Réponds uniquement en français, de façon professionnelle et claire.
-
-Contexte issu des documents :
-{context}
-
-Question : {question}
-
-Réponse :"""
-        prompt = PromptTemplate(template=template, input_variables=["context", "question"])
-
-        # Création de l’assistant
-        st.session_state.assistant = RetrievalQA.from_chain_type(
-            llm=llm,
-            chain_type="stuff",
-            retriever=db.as_retriever(search_kwargs={"k": 5}),
-            chain_type_kwargs={"prompt": prompt}
-        )
-    st.success("Assistant prêt ! Vous pouvez poser n’importe quelle question")
-
-# Interface du chat
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+for msg in st.session_state.messages:
+    st.chat_message(msg["role"]).write(msg["content"])
 
-if question := st.chat_input("Ex : Quelle est la duration du fonds obligataire ? Quelle est la stratégie actions émergentes ?"):
-    # Ajoute la question
-    st.session_state.messages.append({"role": "user", "content": question})
-    with st.chat_message("user"):
-        st.markdown(question)
+prompt = st.chat_input("Posez une question financière…")
 
-    # Réponse intelligente
-    with st.chat_message("assistant"):
-        with st.spinner("Analyse des documents..."):
-            result = st.session_state.assistant.invoke({"query": question})
-            reponse = result["result"]
-        st.markdown(reponse)
+def chatbot_reply(question):
 
-    # Sauvegarde la réponse
-    st.session_state.messages.append({"role": "assistant", "content": reponse})
+    question = question.lower()
+
+    if "profil" in question:
+        if st.session_state.profil:
+            return f"Votre profil est *{st.session_state.profil}*."
+        else:
+            return "Veuillez d'abord analyser votre profil."
+
+    if "allocation" in question:
+        if st.session_state.allocation:
+            allocation = st.session_state.allocation
+            return (
+                f"Votre allocation actuelle est :\n"
+                f"- Actions : {allocation['Actions']}%\n"
+                f"- Obligations : {allocation['Obligations']}%\n"
+                f"- Liquidités : {allocation['Liquidités']}%"
+            )
+        else:
+            return "Veuillez analyser votre profil d'abord."
+
+
+
+    if "risque" in question:
+        if st.session_state.profil:
+            return {
+                "Prudent": "Faible risque, placements sûrs.",
+                "Équilibré": "Équilibre entre risque et rendement.",
+                "Dynamique": "Risque élevé, rendement potentiel élevé."
+            }[st.session_state.profil]
+        else:
+            return "Votre profil n'est pas encore analysé."
+
+    if "bonjour" in question:
+        return "Bonjour 👋 ! Comment puis-je vous aider ?"
+
+    return "Je n'ai pas compris votre question. Essayez : 'profil', 'allocation', 'risque'."
+
+if prompt:
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    response = chatbot_reply(prompt)
+    st.session_state.messages.append({"role": "assistant", "content": response})
+    st.chat_message("assistant").write(response)
