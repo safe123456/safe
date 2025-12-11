@@ -181,59 +181,54 @@ if st.session_state.profil:
         st.write(f"- Obligations : *{capital * allocation['Obligations'] / 100:.2f} €*")
         st.write(f"- Liquidités : *{capital * allocation['Liquidités'] / 100:.2f} €*")
      # --------------------------------------------------------
-# 4️⃣ CHATBOT MODERNE
 # --------------------------------------------------------
-st.subheader("🤖 Chatbot intelligent")
+#4 AI-POWERED ROBO-ADVISOR – Vraie IA qui lit tes PDFs
+# --------------------------------------------------------
+st.markdown("<h2 style='text-align:center;color:#636efb;margin-top:50px;'>AI-Powered Robo-Advisor</h2>", unsafe_allow_html=True)
+st.write("Posez n’importe quelle question sur vos documents (frais, duration, stratégie, risques…)")
 
+# Charge l’IA une seule fois
+if "robo" not in st.session_state:
+    with st.spinner("L'IA lit tous vos documents PDF… (30-60 secondes la première fois)"):
+        loader = PyPDFDirectoryLoader("docs")  # dossier "docs" à côté de app.py
+        docs = loader.load()
+        texts = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200).split_documents(docs)
+        db = Chroma.from_documents(texts, HuggingFaceBgeEmbeddings(model_name="BAAI/bge-small-en-v1.5"))
+        llm = HuggingFaceHub(repo_id="mistralai/Mistral-7B-Instruct-v0.3",
+                             model_kwargs={"temperature": 0.3, "max_length": 1024})
+        template = """Tu es un robo-advisor expert en finance.
+Réponds en français, de façon claire et professionnelle, uniquement avec les informations des documents.
+
+Contexte :
+{context}
+
+Question : {question}
+
+Réponse détaillée :"""
+        prompt = PromptTemplate(template=template, input_variables=["context", "question"])
+        st.session_state.robo = RetrievalQA.from_chain_type(
+            llm=llm,
+            chain_type="stuff",
+            retriever=db.as_retriever(search_kwargs={"k": 5}),
+            chain_type_kwargs={"prompt": prompt}
+        )
+    st.balloons()
+    st.success("Robo-Advisor IA activé ! Posez votre question")
+
+# Chat intelligent
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 for msg in st.session_state.messages:
     st.chat_message(msg["role"]).write(msg["content"])
 
-prompt = st.chat_input("Posez une question financière…")
+if question := st.chat_input("Ex : Quels sont les frais ? Quelle est la duration ? Stratégie actions émergentes ?"):
+    st.session_state.messages.append({"role": "user", "content": question})
+    st.chat_message("user").write(question)
 
-def chatbot_reply(question):
-
-    question = question.lower()
-
-    if "profil" in question:
-        if st.session_state.profil:
-            return f"Votre profil est *{st.session_state.profil}*."
-        else:
-            return "Veuillez d'abord analyser votre profil."
-
-    if "allocation" in question:
-        if st.session_state.allocation:
-            allocation = st.session_state.allocation
-            return (
-                f"Votre allocation actuelle est :\n"
-                f"- Actions : {allocation['Actions']}%\n"
-                f"- Obligations : {allocation['Obligations']}%\n"
-                f"- Liquidités : {allocation['Liquidités']}%"
-            )
-        else:
-            return "Veuillez analyser votre profil d'abord."
-
-
-
-    if "risque" in question:
-        if st.session_state.profil:
-            return {
-                "Prudent": "Faible risque, placements sûrs.",
-                "Équilibré": "Équilibre entre risque et rendement.",
-                "Dynamique": "Risque élevé, rendement potentiel élevé."
-            }[st.session_state.profil]
-        else:
-            return "Votre profil n'est pas encore analysé."
-
-    if "bonjour" in question:
-        return "Bonjour 👋 ! Comment puis-je vous aider ?"
-
-    return "Je n'ai pas compris votre question. Essayez : 'profil', 'allocation', 'risque'."
-
-if prompt:
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    response = chatbot_reply(prompt)
-    st.session_state.messages.append({"role": "assistant", "content": response})
-    st.chat_message("assistant").write(response)
+    with st.chat_message("assistant"):
+        with st.spinner("Recherche dans les documents..."):
+            result = st.session_state.robo.invoke({"query": question})
+            reponse = result["result"]
+        st.markdown(reponse)
+        st.session_state.messages.append({"role": "assistant", "content": reponse})
